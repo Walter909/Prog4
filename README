@@ -1,0 +1,11 @@
+Walter Toriola
+
+Questions:
+1. An explanation of how well your TinyFS implementation works
+2. An explanation of which additional functionality areas you have chosen and how you have shown that it works.
+3. Any limitations or bugs your file system has.
+
+Answers:
+1.
+2.
+3. Files data must not exceed 256 bytes

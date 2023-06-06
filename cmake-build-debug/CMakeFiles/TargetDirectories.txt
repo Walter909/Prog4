@@ -1,0 +1,3 @@
+/Users/walte/CLionProjects/Prog4/cmake-build-debug/CMakeFiles/Prog4.dir
+/Users/walte/CLionProjects/Prog4/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/walte/CLionProjects/Prog4/cmake-build-debug/CMakeFiles/rebuild_cache.dir
