@@ -9,24 +9,48 @@
 //Global FS state/metadata
 int isMounted = 0;
 int currentOpendisk = 0;
-int totalBlockCount = 0;
+int fileInodeNumbers = 0;
 
 struct dynamic_file_table *fileHead = NULL;
 
-int nextFreeInode(int disk,int FStotalBlockCount){
+int nextFreeInode(char* bitmap){
     //returns the bNum of the next free Inode from 1 - midpoint
 
 }
 
-int nextFreeDataBlock(int disk,int FStotalBlockCount){
+int nextFreeDataBlock(char* bitmap){
     //returns the bNum of the next free Inode from midpoint - (end - 1)
 
 }
 
-int doesNotExist(char*name,int disk,int FStotalBlockCount){
+int doesNotExistOnDisk(char*name,int disk,int FStotalBlockCount){
     char buffer[BLOCK_SIZE];
+    int i;
     //should read the root Inode on last bNum and check all the name inode pairs
-    readBlock(disk,FStotalBlockCount-1, buffer);
+    if(readBlock(disk,FStotalBlockCount-1, buffer) == READBLK_FAILED){
+        return DOES_NOT_EXIST;
+    }
+
+    //read every 8 bytes for every 16 bytes
+    for(i = 0; i < BLOCK_SIZE; i+=16){
+        // Extract the first 8 bytes
+        unsigned char bytes[8];
+        memcpy(bytes, buffer + i, 8);
+
+        // Convert the bytes to a string
+        char str[9]; // Plus 1 for null terminator
+        memcpy(str, bytes, 8);
+        str[8] = '\0';
+
+        // Convert the string
+        int result = strcmp(str, name);
+        if(result == 0){
+            //it exists
+            return 0;
+        }
+    }
+
+    return DOES_NOT_EXIST;
 }
 
 int alreadyOpen(char* name, struct dynamic_file_table *head){
@@ -79,10 +103,11 @@ void addFileToDynamicResourceTable(char *filename, int inodeNumber, fileDescript
     }
 }
 
-int* updateSuperBlockBitMap(int disk,int blockCount){
-    //goes through the disk and assigns allocated/unallocated values
-    // Allocate memory for the bitmap
-    int* bitmap = malloc(blockCount * sizeof(int));
+char* computebitmap(int disk, int start, int end){
+    //creates a bitmap from start bNum to end bNum on current disk
+    // Allocate memory for the bitmap size
+    int bitmapSize = end - start + 1;
+    char* bitmap = malloc(bitmapSize * sizeof(char));
     if (bitmap == NULL) {
         return NULL; // Memory allocation failed
     }
@@ -93,14 +118,14 @@ int* updateSuperBlockBitMap(int disk,int blockCount){
         free(check);
         return NULL;
     }
+    //buffer we read blocks into
     char *buffer = calloc(BLOCK_SIZE, sizeof(char));
     if(buffer == NULL){
         free(buffer);
         return NULL;
     }
     //hardcode to superblock to be allocated space
-    bitmap[0] = 1;
-    for(int i = 1; i < blockCount; i++){
+    for(int i = start; i <= end; i++){
         if(readBlock(disk,i,buffer) == READBLK_FAILED){
             free(bitmap);
             free(check);
@@ -112,9 +137,9 @@ int* updateSuperBlockBitMap(int disk,int blockCount){
 
         //both all 0's so it is a free block otherwise not free block
         if(result == 0){
-            bitmap[i] = 0;
+            bitmap[i - start] = 'F';
         } else{
-            bitmap[i] = 1;
+            bitmap[i - start] = 'A';
         }
     }
 
@@ -133,7 +158,6 @@ int* updateSuperBlockBitMap(int disk,int blockCount){
 int tfs_mkfs(char *filename, int nBytes){
 
     struct stat fileStat;
-    int* bitmap;
     int disk;
     int i;
     if((disk = openDisk(filename,nBytes)) == OPENDISK_FAILED){
@@ -141,28 +165,33 @@ int tfs_mkfs(char *filename, int nBytes){
     }
 
     int blockCount = nBytes/BLOCK_SIZE;
-    totalBlockCount = blockCount;
+    int midpoint = blockCount / 2;
+    int end = blockCount - 1;
 
     //for formatting the file system
-    unsigned char *superBlockBuffer = calloc(BLOCK_SIZE, sizeof(char));
-    if(superBlockBuffer == NULL){
+    unsigned char *buffer = calloc(BLOCK_SIZE, sizeof(char));
+    if(buffer == NULL){
         return TFS_MKFS_FAILED;
     }
 
     //0 out the disk
     for(i = 0 ; i < blockCount;i++){
-        writeBlock(disk, i, superBlockBuffer);
+        writeBlock(disk, i, buffer);
     }
 
     //root Inode at bNum -> 1 - midpoint
     // Use the stat function to retrieve file information
     if (stat(filename, &fileStat) == -1) {
-        free(superBlockBuffer);
+        free(buffer);
         return TFS_MKFS_FAILED;
     }
 
     //Root Directory Inode structure at bNum 1
     struct Inode inode;
+    unsigned char *inodepadding = calloc(164, sizeof(char));
+    if(buffer == NULL){
+        return TFS_MKFS_FAILED;
+    }
     inode.fileSize = fileStat.st_size;
     inode.inodeNumber = 1;
     inode.accessControl = 0755;
@@ -171,31 +200,35 @@ int tfs_mkfs(char *filename, int nBytes){
     inode.accessTime = fileStat.st_atimespec;
     inode.modifiedTime = fileStat.st_mtimespec;
     inode.creationTime = fileStat.st_ctimespec;
-    //Last bNum is for root directory data block
-    inode.datablock = blockCount-1;
+    //Last bNum is for root directory data block that stores name - inode pairs
+    inode.datablock = end;
+    memcpy(inode.padding, inodepadding, sizeof(inode.padding));
+    writeBlock(disk,1,&inode);
 
-    //superblock at bNum 0
+    //Superblock structure at bNum 0
     //magic number
-    superBlockBuffer[0] = 0x5A;
-    //root inode bNum
-    superBlockBuffer[1] = 1;
-    //block Count
-    superBlockBuffer[2] = blockCount;
+    struct Superblock sb;
+    sb.magicNumber = 0x5A;
+    sb.blockCount = blockCount;
+    //create the inode block sector and data block sectors bitmaps for superblock
+    // Compute the inode bitmap and copy it to the superblock
+    sb.inodebitmap = malloc(sizeof(char) * midpoint);
+    char* inodeBitmap = computebitmap(disk, 1, midpoint);
+    memcpy(sb.inodebitmap, inodeBitmap, midpoint);
+    free(inodeBitmap);
 
-    //free/allocated blocks list
-    bitmap = updateSuperBlockBitMap(disk,blockCount);
-    for(i = 0; i<blockCount; i++){
-        if(bitmap[i] == 0){
-            superBlockBuffer[i + 3] = 'F';
-        }else{
-            superBlockBuffer[i + 3] = 'A';
-        }
-    }
-    free(bitmap);
+    // Compute the free data block bitmap and copy it to the superblock
+    sb.freedatablockbitmap = malloc(sizeof(char) * blockCount - midpoint - 1);
+    char* freeDataBlockBitmap = computebitmap(disk, midpoint + 1, end);
+    memcpy(sb.freedatablockbitmap, freeDataBlockBitmap, blockCount - midpoint - 1);
+    free(freeDataBlockBitmap);
 
-    //write with most updated bit map
-    writeBlock(disk, 0, superBlockBuffer);
-    free(superBlockBuffer);
+    //write superblock onto disk
+    writeBlock(disk, 0, &sb);
+    free(buffer);
+    free(inodepadding);
+    free(sb.inodebitmap);
+    free(sb.freedatablockbitmap);
 
     return 0; //Success
 }
@@ -230,7 +263,7 @@ int tfs_mount(char *filename){
 
     // Mark the file system as mounted
     isMounted = 1;
-    currentOpendisk=disk;
+    currentOpendisk = disk;
 
     return 0;
 }
@@ -272,15 +305,29 @@ fileDescriptor tfs_open(char *name){
             return TFS_OPEN_FAILED;
         }
 
-        //Check if file exists in FS
-        if(doesNotExist(name,currentOpendisk,totalBlockCount) == -1){
-            //read in superblock bitmap
+        //read in superblock bitmap
+        struct Superblock sb;
+        if(readBlock(currentOpendisk,0,&sb) == READBLK_FAILED){
+            perror("Superblock corrupted");
+            return TFS_OPEN_FAILED;
+        }
 
-            //create Inode and empty datablock and allocate onto disk
+        //Check if file exists in FS
+        if(doesNotExistOnDisk(name,currentOpendisk,sb.blockCount) == DOES_NOT_EXIST){
+            //create Inode and add on disk
+            struct Inode inode;
+            inode.fileSize = 0;
+            inode.inodeNumber = fileInodeNumbers++;
+            inode.accessControl = 0755;
+            inode.referenceCount = 0;
+            inode.fileType = "File";
+            inode.datablock = nextFreeDataBlock(sb.freedatablockbitmap);
+
+            //allocate empty datablock on disk
 
             //add name inode pair to root directory data block
 
-            //update the superblock
+            //update the superblock bitmaps
 
         }
 
@@ -291,7 +338,7 @@ fileDescriptor tfs_open(char *name){
         //read bNum of where file inode is in FS
         struct Inode inode;
         readBlock(currentOpendisk,
-                  nextFreeInode(currentOpendisk,totalBlockCount),
+                  nextFreeInode(sb.inodebitmap),
                   &inode);
 
         //add entry to dynamic resource table to show it is open

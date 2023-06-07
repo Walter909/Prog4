@@ -9,11 +9,7 @@ int main(int argc, char *argv[]) {
 
     tfs_mount("/Users/walte/CLionProjects/Prog4/testFile");
 
-    tfs_unmount();
-
-    tfs_mount("/Users/walte/CLionProjects/Prog4/testFile");
-
-    tfs_open("/Users/walte/CLionProjects/Prog4/target");
+    tfs_open("target");
 
     return 0; // Return 0 to indicate successful program execution
 }

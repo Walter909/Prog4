@@ -14,6 +14,7 @@
 #define UNMOUNT_FAILED -7
 #define TFS_OPEN_FAILED -8
 #define SPECIAL_CASE -9
+#define DOES_NOT_EXIST -10
 
 
 #endif //PROG4_ERRORS_H

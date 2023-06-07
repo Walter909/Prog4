@@ -18,6 +18,14 @@ struct dynamic_file_table{
     struct dynamic_file_table *next;
 };
 
+struct Superblock {
+    char magicNumber;
+    int blockCount;
+    char *freedatablockbitmap;
+    char *inodebitmap;
+    char padding[1];  // Placeholder for padding
+};
+
 struct Inode {
     off_t fileSize;
     int inodeNumber;
@@ -29,6 +37,7 @@ struct Inode {
     struct timespec creationTime;
     //data block bNum location
     int datablock;
+    char padding[164];  // Add padding array to make the struct 256 bytes
 };
 
 int tfs_mkfs(char *filename, int nbytes);

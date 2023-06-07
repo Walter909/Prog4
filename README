@@ -8,4 +8,7 @@ Questions:
 Answers:
 1.
 2.
-3. Files data must not exceed 256 bytes
+3.Below
+Limitations & Bugs:
+- Files data must not exceed 256 bytes
+- Struct packing to try not to exceed the 256 bytes for a single inode
