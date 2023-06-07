@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <time.h>
 #include "libTinyFS.h"
 #include "libDisk.h"
 #include "Errors.h"
@@ -9,24 +10,31 @@
 //Global FS state/metadata
 int isMounted = 0;
 int currentOpendisk = 0;
-int fileInodeNumbers = 0;
+int fileInodeNumbers = 10;
 
 struct dynamic_file_table *fileHead = NULL;
 
-int nextFreeInode(char* bitmap){
-    //returns the bNum of the next free Inode from 1 - midpoint
 
+void addToRootDirectoryDataBlock(int currendisk, int blockCount, char* name, int inodeNumber){
+    //write on the last bNum the name and inode
 }
 
-int nextFreeDataBlock(char* bitmap){
+int nextFreeBlock(char* bitmap){
     //returns the bNum of the next free Inode from midpoint - (end - 1)
+    int i;
+    for(i = 0; i < strlen(bitmap); i++){
+        if(bitmap[i] == 'F'){
+            return i;
+        }
+    }
 
+    return NO_FREE_BLOCKS_LEFT;
 }
 
 int doesNotExistOnDisk(char*name,int disk,int FStotalBlockCount){
     char buffer[BLOCK_SIZE];
     int i;
-    //should read the root Inode on last bNum and check all the name inode pairs
+    //should read the root Inode datablock last bNum and check all the name inode pairs
     if(readBlock(disk,FStotalBlockCount-1, buffer) == READBLK_FAILED){
         return DOES_NOT_EXIST;
     }
@@ -197,8 +205,6 @@ int tfs_mkfs(char *filename, int nBytes){
     inode.accessControl = 0755;
     inode.referenceCount = 0;
     inode.fileType = "Directory";
-    inode.accessTime = fileStat.st_atimespec;
-    inode.modifiedTime = fileStat.st_mtimespec;
     inode.creationTime = fileStat.st_ctimespec;
     //Last bNum is for root directory data block that stores name - inode pairs
     inode.datablock = end;
@@ -251,13 +257,13 @@ int tfs_mount(char *filename){
     }
 
     // Read the superblock from the disk
-    char superBlockBuffer[BLOCK_SIZE];
-    if (readBlock(disk, 0, superBlockBuffer) != 0) {
+    struct Superblock sb;
+    if (readBlock(disk, 0, &sb) != 0) {
         return MOUNT_FAILED;
     }
 
     // Verify the file system type using the magic number
-    if (superBlockBuffer[0] != 0x5A) {
+    if (sb.magicNumber != 0x5A) {
         return MOUNT_FAILED;
     }
 
@@ -314,6 +320,12 @@ fileDescriptor tfs_open(char *name){
 
         //Check if file exists in FS
         if(doesNotExistOnDisk(name,currentOpendisk,sb.blockCount) == DOES_NOT_EXIST){
+            struct timespec current_time;
+
+            if (clock_gettime(CLOCK_REALTIME, &current_time) == -1) {
+                perror("clock_gettime failed");
+                return TFS_OPEN_FAILED;
+            }
             //create Inode and add on disk
             struct Inode inode;
             inode.fileSize = 0;
@@ -321,11 +333,12 @@ fileDescriptor tfs_open(char *name){
             inode.accessControl = 0755;
             inode.referenceCount = 0;
             inode.fileType = "File";
-            inode.datablock = nextFreeDataBlock(sb.freedatablockbitmap);
-
             //allocate empty datablock on disk
+            inode.datablock = nextFreeBlock(sb.freedatablockbitmap);
+            inode.creationTime = current_time;
 
             //add name inode pair to root directory data block
+            addToRootDirectoryDataBlock(currentOpendisk,sb.blockCount,name,inode.inodeNumber);
 
             //update the superblock bitmaps
 
@@ -338,8 +351,10 @@ fileDescriptor tfs_open(char *name){
         //read bNum of where file inode is in FS
         struct Inode inode;
         readBlock(currentOpendisk,
-                  nextFreeInode(sb.inodebitmap),
+                  nextFreeBlock(sb.inodebitmap),
                   &inode);
+
+        //check if hardlink to other file and increase other files reference count
 
         //add entry to dynamic resource table to show it is open
         addFileToDynamicResourceTable(name,inode.inodeNumber,fd,inode.fileSize,0);
@@ -371,3 +386,9 @@ int tfs_readByte(fileDescriptor FD, char *buffer);
 
 /* change the file pointer location to offset (absolute). Returns success/error codes.*/
 int tfs_seek(fileDescriptor FD, int offset);
+
+/* returns the file’s creation time as string */
+char* tfs_stat(fileDescriptor FD){
+    //read the inode the fd belongs to and make sure it is not a hard link then print the creation time
+    return "not implemented yet";
+}

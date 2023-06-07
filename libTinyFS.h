@@ -32,8 +32,6 @@ struct Inode {
     int accessControl;
     int referenceCount;
     char* fileType;
-    struct timespec accessTime;
-    struct timespec modifiedTime;
     struct timespec creationTime;
     //data block bNum location
     int datablock;
