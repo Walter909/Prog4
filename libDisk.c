@@ -44,18 +44,11 @@ int openDisk(char *filename, int nBytes) {
         }
     } else {
         // Open the file in read-write mode without truncating it
-        disk = open(filename, O_RDWR);
-        if (disk == -1) {
+        if ((disk = open(filename, O_RDWR)) == -1) {
             // Failed to open the file
             close(disk);
             return OPENDISK_FAILED;
         }
-    }
-
-    //what if disk is OPENDISK_FAILED?
-    if(disk == OPENDISK_FAILED){
-        perror("Special edge case error where fd is same as error Code");
-        return SPECIAL_CASE;
     }
 
     return disk; // the fd represents the disk Number

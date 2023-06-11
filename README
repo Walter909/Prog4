@@ -6,9 +6,25 @@ Questions:
 3. Any limitations or bugs your file system has.
 
 Answers:
-1.
-2.
+1. I tried to mimic the ext4 filesystem by writing and reading structs of my disk
+   So my superblock if my first struct then, my inodes block sector comes next and
+   then my data block sector comes after. I allocate continuous blocks of memory
+   for files and store the start and end data blocks a file owns in the files inode.
+   File sizes are also based on the number of datablocks that a file owns.
+2. Extra
+tfs_rename(...) /* Renames a file.  New name should be passed in. */
+- I pass in the old name and change it to the new file name I want.
+tfs_readdir(...) /* lists all the files and directories on the disk */
+- I use a global to keep track of all the files in my directory and just print all the file names
+tfs_stat(fileDescriptor FD) /* returns the file’s creation time or all info */
+- I get the creation time from the inode and just print it out when I am done
+
 3.Below
-Limitations & Bugs:
-- Files data must not exceed 256 bytes
-- Struct packing to try not to exceed the 256 bytes for a single inode
+Limitations:
+- Can only delete file with FD so after opened
+- All filenames must be unique to a file in a directory
+- Limit of 100 to how many files can be left open at a time
+- Structs that exceed 256 bytes may overflow and cause a disk corruption
+
+Bugs
+- Not all built-in functions are error handled

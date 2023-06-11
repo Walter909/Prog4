@@ -7,13 +7,15 @@
 
 #include <sys/stat.h>
 
+#define OPEN_MAX 100
+#define FILE_DATABLOCKS 5
+
 typedef int fileDescriptor;
 
 struct dynamic_file_table{
     char *filename;
-    int inodeNumber;
+    int inodebNum;
     fileDescriptor fd;
-    long size;
     int fp;
     struct dynamic_file_table *next;
 };
@@ -21,21 +23,27 @@ struct dynamic_file_table{
 struct Superblock {
     char magicNumber;
     int blockCount;
-    char *freedatablockbitmap;
-    char *inodebitmap;
-    char padding[1];  // Placeholder for padding
+    char freedatablockbitmap[100];
+    char inodebitmap[100];
+    char padding[54];  //Placeholder for padding
 };
 
 struct Inode {
-    off_t fileSize;
+    int fileSize;
     int inodeNumber;
     int accessControl;
     int referenceCount;
-    char* fileType;
+    char *fileType;
     struct timespec creationTime;
     //data block bNum location
-    int datablock;
-    char padding[164];  // Add padding array to make the struct 256 bytes
+    int startDatablock;
+    int endDatablock;
+    //char padding[124];  Add padding array to make the struct 256 bytes
+};
+
+struct FileInfo {
+    char filename[8];
+    int inodeNumber;
 };
 
 int tfs_mkfs(char *filename, int nbytes);
@@ -47,5 +55,8 @@ int tfs_write(fileDescriptor FD, char *buffer, int size);
 int tfs_delete(fileDescriptor FD);
 int tfs_readByte(fileDescriptor FD, char *buffer);
 int tfs_seek(fileDescriptor FD, int offset);
+void tfs_stat(fileDescriptor FD);
+void tfs_readdir();
+void tfs_rename(char *oldName,char* newName);
 
 #endif //PROG4_LIBTINYFS_H
